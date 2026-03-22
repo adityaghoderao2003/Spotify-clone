@@ -1,8 +1,8 @@
 let currentSong = new Audio();
-let songs;
-let currFolder;
+let songs = [];
+let currFolder = "";
 
-// format time
+// FORMAT TIME
 function formatTime(seconds) {
     if (isNaN(seconds)) return "00:00";
     seconds = Math.floor(seconds);
@@ -10,34 +10,16 @@ function formatTime(seconds) {
     let minutes = Math.floor(seconds / 60);
     let remainingSeconds = seconds % 60;
 
-    if (minutes < 10) minutes = "0" + minutes;
-    if (remainingSeconds < 10) remainingSeconds = "0" + remainingSeconds;
-
-    return minutes + ":" + remainingSeconds;
+    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
-
-// GET SONGS
+// GET SONGS (FIXED FOR GITHUB)
 async function getSongs(folder) {
     currFolder = folder;
 
-    let a = await fetch(`${folder}/`);
-    let response = await a.text();
-
-    let div = document.createElement("div");
-    div.innerHTML = response;
-
-    let as = div.getElementsByTagName("a");
-
-    songs = [];
-
-    for (let index = 0; index < as.length; index++) {
-        const element = as[index];
-
-        if (element.href.endsWith(".mp3")) {
-            songs.push(element.href.split(`/${folder}/`)[1]);
-        }
-    }
+    // fetch songs.json instead of folder
+    let response = await fetch(`${folder}/songs.json`);
+    songs = await response.json();
 
     let songUL = document.querySelector(".songList ul");
     songUL.innerHTML = "";
@@ -47,7 +29,7 @@ async function getSongs(folder) {
         <li>
             <img class="invert" src="img/music.svg">
             <div class="info">
-                <div>${song.replaceAll("%20"," ")}</div>
+                <div>${song}</div>
                 <div>Song Artist</div>
             </div>
             <div class="playnow">
@@ -57,71 +39,64 @@ async function getSongs(folder) {
         </li>`;
     }
 
-    Array.from(document.querySelector(".songList").getElementsByTagName("li"))
-        .forEach(e => {
-            e.addEventListener("click", () => {
-                playMusic(e.querySelector(".info").firstElementChild.innerHTML.trim())
-            })
+    // CLICK EVENT
+    document.querySelectorAll(".songList li").forEach(li => {
+        li.addEventListener("click", () => {
+            let track = li.querySelector(".info div").innerText.trim();
+            playMusic(track);
         });
+    });
 
     return songs;
 }
 
-
 // PLAY MUSIC
-const playMusic = (track, pause = false) => {
-
-    currentSong.src = `${currFolder}/` + track;
+function playMusic(track, pause = false) {
+    currentSong.src = `${currFolder}/${track}`;
 
     if (!pause) {
         currentSong.play();
         play.src = "img/pause.svg";
     }
 
-    document.querySelector(".songinfo").innerHTML = decodeURI(track);
-    document.querySelector(".songtime").innerHTML = "00:00 / 00:00";
+    document.querySelector(".songinfo").innerText = track;
+    document.querySelector(".songtime").innerText = "00:00 / 00:00";
 }
-
 
 // DISPLAY PLAYLIST CARDS
 async function displayAlbums() {
-
     let cardContainer = document.querySelector(".cardContainer");
 
-    // manual folders for GitHub
-    let folders = ["ncs","Bright","sad playlist","arjit singh","Mohit chauhan","cs","chill","karan aujla"];
+    // ⚠️ USE CORRECT FOLDER NAMES (NO SPACES)
+    let folders = ["ncs", "bright", "sad", "arijit"];
+
+    cardContainer.innerHTML = "";
 
     for (let folder of folders) {
-
         try {
-
-            let a = await fetch(`songs/${folder}/info.json`);
-            let response = await a.json();
+            let res = await fetch(`songs/${folder}/info.json`);
+            let data = await res.json();
 
             cardContainer.innerHTML += `
             <div data-folder="${folder}" class="card">
                 <img src="songs/${folder}/cover.jpg">
-                <h2>${response.title}</h2>
-                <p>${response.description}</p>
+                <h2>${data.title}</h2>
+                <p>${data.description}</p>
             </div>`;
-
-        }
-        catch(error){
-            console.log("info.json missing in", folder);
+        } catch (e) {
+            console.log("Missing info.json in", folder);
         }
     }
 
-    Array.from(document.getElementsByClassName("card")).forEach(e => {
-        e.addEventListener("click", async item => {
-
-            songs = await getSongs(`songs/${item.currentTarget.dataset.folder}`);
-            playMusic(songs[0]);
-
+    // CLICK EVENT FOR CARDS
+    document.querySelectorAll(".card").forEach(card => {
+        card.addEventListener("click", async () => {
+            let folder = card.dataset.folder;
+            let songsList = await getSongs(`songs/${folder}`);
+            playMusic(songsList[0]);
         });
     });
 }
-
-
 
 // MAIN FUNCTION
 async function main() {
@@ -131,83 +106,62 @@ async function main() {
 
     await displayAlbums();
 
+    // PLAY / PAUSE
     play.addEventListener("click", () => {
-
         if (currentSong.paused) {
             currentSong.play();
             play.src = "img/pause.svg";
-        }
-
-        else {
+        } else {
             currentSong.pause();
             play.src = "img/play.svg";
         }
     });
 
-
+    // TIME UPDATE
     currentSong.addEventListener("timeupdate", () => {
-
-        document.querySelector(".songtime").innerHTML =
-        `${formatTime(currentSong.currentTime)} / ${formatTime(currentSong.duration)}`;
+        document.querySelector(".songtime").innerText =
+            `${formatTime(currentSong.currentTime)} / ${formatTime(currentSong.duration)}`;
 
         document.querySelector(".circle").style.left =
-        (currentSong.currentTime / currentSong.duration) * 100 + "%";
+            (currentSong.currentTime / currentSong.duration) * 100 + "%";
     });
 
-
+    // SEEK BAR
     document.querySelector(".seekbar").addEventListener("click", e => {
-
-        let percent = (e.offsetX / e.target.getBoundingClientRect().width) * 100;
-
-        document.querySelector(".circle").style.left = percent + "%";
-
-        currentSong.currentTime = ((currentSong.duration) * percent) / 100;
+        let percent = (e.offsetX / e.target.clientWidth) * 100;
+        currentSong.currentTime = (currentSong.duration * percent) / 100;
     });
 
-
-    previous.addEventListener("click", () => {
-
-        let index = songs.indexOf(currentSong.src.split("/").slice(-1)[0]);
-
-        if ((index - 1) >= 0) {
-            playMusic(songs[index - 1]);
-        }
-    });
-
-
+    // NEXT SONG
     next.addEventListener("click", () => {
-
-        let index = songs.indexOf(currentSong.src.split("/").slice(-1)[0]);
-
-        if ((index + 1) < songs.length) {
+        let index = songs.indexOf(currentSong.src.split("/").pop());
+        if (index + 1 < songs.length) {
             playMusic(songs[index + 1]);
         }
     });
 
-
-    document.querySelector(".range input").addEventListener("change", (e) => {
-
-        currentSong.volume = parseInt(e.target.value) / 100;
+    // PREVIOUS SONG
+    previous.addEventListener("click", () => {
+        let index = songs.indexOf(currentSong.src.split("/").pop());
+        if (index > 0) {
+            playMusic(songs[index - 1]);
+        }
     });
 
+    // VOLUME CONTROL
+    document.querySelector(".range input").addEventListener("input", e => {
+        currentSong.volume = e.target.value / 100;
+    });
 
-    document.querySelector(".volume>img").addEventListener("click", e => {
-
-        if (e.target.src.includes("volume.svg")) {
-
-            e.target.src = e.target.src.replace("volume.svg","mute.svg");
-
+    // MUTE / UNMUTE
+    document.querySelector(".volume img").addEventListener("click", e => {
+        if (currentSong.volume > 0) {
             currentSong.volume = 0;
-
+            e.target.src = "img/mute.svg";
             document.querySelector(".range input").value = 0;
-        }
-
-        else {
-
-            e.target.src = e.target.src.replace("mute.svg","volume.svg");
-
-            currentSong.volume = .10;
-
+        } else {
+            currentSong.volume = 0.1;
+            e.target.src = "img/volume.svg";
             document.querySelector(".range input").value = 10;
         }
     });
